@@ -1,0 +1,1 @@
+"""CLI module for MySQL backup and restore."""

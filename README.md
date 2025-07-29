@@ -99,6 +99,31 @@ Each service supports multiple configuration formats:
 
 ## 🐳 Docker Deployment
 
+### Automatic Docker Builds
+
+The project includes an automated Docker build workflow that:
+
+- **Smart Detection**: Only builds images for services with code changes
+- **Multi-Platform**: Supports both AMD64 and ARM64 architectures
+- **GitHub Container Registry**: Automatically pushes to `ghcr.io`
+- **Versioned Tags**: Includes branch, PR, and semantic version tags
+
+#### Supported Services
+
+- **Elasticsearch**: `ghcr.io/{repo}/elasticsearch`
+- **MySQL**: `ghcr.io/{repo}/mysql` 
+- **PostgreSQL**: `ghcr.io/{repo}/postgresql`
+- **MongoDB**: `ghcr.io/{repo}/mongodb`
+
+#### Workflow Triggers
+
+The workflow automatically runs when:
+- Code is pushed to `main` or `develop` branches
+- Pull requests are created
+- Files in service directories are modified
+
+For detailed workflow documentation, see [Docker Workflow Guide](docs/docker-workflow.md).
+
 ### Local Development
 
 ```bash
@@ -111,6 +136,22 @@ docker run --rm \
   -e SNAPSHOT_HOSTS=http://elasticsearch:9200 \
   -e S3_BUCKET_NAME=my-bucket \
   planlx/elasticsearch-backup-kit:latest
+```
+
+### Manual Docker Builds
+
+```bash
+# Build Elasticsearch image
+docker build -t planl-backup-kit-elasticsearch ./elasticsearch
+
+# Build MySQL image
+docker build -t planl-backup-kit-mysql ./mysql
+
+# Build PostgreSQL image
+docker build -t planl-backup-kit-postgresql ./postgresql
+
+# Build MongoDB image
+docker build -t planl-backup-kit-mongodb ./mongodb
 ```
 
 ### Kubernetes Deployment

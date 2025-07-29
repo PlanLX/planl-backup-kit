@@ -1,5 +1,5 @@
 # 使用 Python 3.12 作为基础镜像
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim as builder
 
 ARG PIP_INDEX_URL
 ARG HTTP_PROXY
@@ -30,13 +30,13 @@ RUN pip install uv
 # 复制项目文件
 COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
-COPY snapshot.py ./
+COPY main.py ./
 
 # 使用 uv 安装依赖
 RUN uv sync --frozen
 
 # 生产阶段
-FROM python:3.12-slim AS production
+FROM python:3.12-slim as production
 
 # 设置工作目录
 WORKDIR /app
@@ -57,7 +57,7 @@ COPY --from=builder /app/.venv /app/.venv
 
 # 复制应用代码
 COPY --from=builder /app/src ./src
-COPY --from=builder /app/snapshot.py ./
+COPY --from=builder /app/main.py ./
 
 # 设置环境变量
 ENV PATH="/app/.venv/bin:$PATH"
@@ -70,7 +70,7 @@ RUN mkdir -p /app/config && chown -R appuser:appuser /app
 USER appuser
 
 # 设置入口点
-ENTRYPOINT ["python", "snapshot.py"]
+ENTRYPOINT ["python", "main.py"]
 
 # 默认命令
 CMD ["--help"]
