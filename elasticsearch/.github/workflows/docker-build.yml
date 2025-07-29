@@ -1,0 +1,211 @@
+name: Docker Build and Push
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**/Dockerfile*'
+      - '**/pyproject.toml'
+      - '**/src/**'
+      - '**/snapshot.py'
+      - '.github/workflows/docker-build.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - '**/Dockerfile*'
+      - '**/pyproject.toml'
+      - '**/src/**'
+      - '**/snapshot.py'
+  workflow_dispatch:
+    inputs:
+      directory:
+        description: 'Directory to build (e.g., elasticsearch, mysql)'
+        required: false
+        default: 'elasticsearch'
+      environment:
+        description: 'Environment to build (e.g., k8s, dev, prod)'
+        required: false
+        default: 'k8s'
+      build_all:
+        description: 'Build all directories and environments'
+        required: false
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      directories: ${{ steps.changes.outputs.directories }}
+      environments: ${{ steps.changes.outputs.environments }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes
+        id: changes
+        run: |
+          # 检测变更的目录
+          CHANGED_DIRS=""
+          for dir in elasticsearch mysql postgresql redis; do
+            if [ -d "$dir" ] && git diff --name-only HEAD~1 | grep -q "^$dir/"; then
+              CHANGED_DIRS="$CHANGED_DIRS $dir"
+            fi
+          done
+          
+          # 如果没有检测到变更，构建所有目录
+          if [ -z "$CHANGED_DIRS" ]; then
+            CHANGED_DIRS="elasticsearch mysql postgresql redis"
+          fi
+          
+          echo "directories=${CHANGED_DIRS}" >> $GITHUB_OUTPUT
+          echo "environments=k8s,dev,prod" >> $GITHUB_OUTPUT
+
+  build-and-push:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory: ${{ fromJson(format('[{0}]', needs.detect-changes.outputs.directories)) }}
+        environment: [k8s, dev, prod]
+      fail-fast: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.directory }}-${{ matrix.environment }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.directory }}
+          file: ./${{ matrix.directory }}/Dockerfile.${{ matrix.environment }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.sha }}
+            ENVIRONMENT=${{ matrix.environment }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+
+  build-specific:
+    if: github.event.inputs.directory != '' || github.event.inputs.environment != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build specific image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ github.event.inputs.directory || 'elasticsearch' }}
+          file: ./${{ github.event.inputs.directory || 'elasticsearch' }}/Dockerfile.${{ github.event.inputs.environment || 'k8s' }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ github.event.inputs.directory || 'elasticsearch' }}-${{ github.event.inputs.environment || 'k8s' }}:${{ github.sha }}
+          build-args: |
+            VERSION=${{ github.sha }}
+            ENVIRONMENT=${{ github.event.inputs.environment || 'k8s' }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+
+  build-all:
+    if: github.event.inputs.build_all == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory: [elasticsearch, mysql, postgresql, redis]
+        environment: [k8s, dev, prod]
+      fail-fast: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push all images
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.directory }}
+          file: ./${{ matrix.directory }}/Dockerfile.${{ matrix.environment }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.directory }}-${{ matrix.environment }}:${{ github.sha }}
+          build-args: |
+            VERSION=${{ github.sha }}
+            ENVIRONMENT=${{ matrix.environment }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+
+  security-scan:
+    needs: [build-and-push, build-specific, build-all]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-es-backup-kit:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'

@@ -1,0 +1,26 @@
+aws_credentials:
+  access_key: your-access-key
+  region: us-east-1
+  secret_key: your-secret-key
+elasticsearch:
+  indices:
+  - my-index-1
+  - my-index-2
+  repository_name: my-s3-repository
+  restore_hosts:
+  - http://localhost:9200
+  restore_password: null
+  restore_username: null
+  restore_verify_certs: true
+  snapshot_hosts:
+  - http://localhost:9200
+  snapshot_name: null
+  snapshot_password: null
+  snapshot_username: null
+  snapshot_verify_certs: true
+s3:
+  base_path: elasticsearch-snapshots
+  bucket_name: my-elasticsearch-snapshots
+  region: us-east-1
+timeout: 300
+wait_for_completion: true

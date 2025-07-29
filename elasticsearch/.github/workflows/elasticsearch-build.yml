@@ -1,0 +1,154 @@
+name: Elasticsearch Backup Kit - Docker Build
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'elasticsearch/**'
+      - '.github/workflows/elasticsearch-build.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'elasticsearch/**'
+      - '.github/workflows/elasticsearch-build.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to build (k8s, dev, prod)'
+        required: true
+        default: 'k8s'
+        type: choice
+        options:
+          - k8s
+          - dev
+          - prod
+      push_image:
+        description: 'Push image to registry'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/elasticsearch-backup-kit
+  DIRECTORY: elasticsearch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: ${{ github.event.inputs.push_image != 'false' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ github.event.inputs.environment || 'k8s' }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ env.DIRECTORY }}
+          file: ./${{ env.DIRECTORY }}/Dockerfile
+          push: ${{ github.event.inputs.push_image != 'false' && github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.sha }}
+            ENVIRONMENT=${{ github.event.inputs.environment || 'k8s' }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.event.created_at }}
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+            GIT_REPOSITORY=${{ github.repository }}
+
+      - name: Build info
+        run: |
+          echo "=== Build Information ==="
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Environment: ${{ github.event.inputs.environment || 'k8s' }}"
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ github.event.inputs.environment || 'k8s' }}"
+          echo "Tags: ${{ steps.meta.outputs.tags }}"
+
+  security-scan:
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ github.event.inputs.environment || 'k8s' }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        working-directory: ./${{ env.DIRECTORY }}
+        run: |
+          uv sync
+
+      - name: Run tests
+        working-directory: ./${{ env.DIRECTORY }}
+        run: |
+          uv run python -m pytest tests/ -v
+
+  notify:
+    needs: [build, security-scan, test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Notify build status
+        run: |
+          if [ "${{ needs.build.result }}" == "success" ]; then
+            echo "✅ Build completed successfully"
+            echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ github.event.inputs.environment || 'k8s' }}:${{ github.sha }}"
+          else
+            echo "❌ Build failed"
+            exit 1
+          fi

@@ -1,0 +1,181 @@
+version: '3.8'
+
+services:
+  # Elasticsearch 快照工具
+  es-snapshot-tool:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+    container_name: es-snapshot-tool
+    volumes:
+      # 挂载配置文件目录
+      - ./config:/app/config:ro
+      # 挂载环境变量文件
+      - ./env.example:/app/.env:ro
+    environment:
+      # 日志级别
+      - PYTHONUNBUFFERED=1
+    networks:
+      - es-network
+    # 示例命令：docker-compose run --rm es-snapshot-tool init --output /app/config/config.yaml
+
+  # 开发环境 - 包含 Elasticsearch 集群
+  elasticsearch:
+    image: elasticsearch:7.17.28
+    user: 1000:1000
+    container_name: elasticsearch
+    depends_on:
+      - plugin-init
+      - keystore-init
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=elasticsearch
+      - discovery.seed_hosts=elasticsearch
+      - cluster.initial_master_nodes=elasticsearch
+      - network.host=0.0.0.0
+      - xpack.security.enabled=false
+      - cluster.deprecation_indexing.enabled=false
+      - ES_JAVA_OPTS=-Xmx512m -Xms512m
+      - node.data=true
+      - node.ingest=true
+      - node.master=true
+      - node.ml=true
+      - node.remote_cluster_client=true
+      - ES_SKIP_SET_KERNEL_PARAMETERS=true
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - path.repo=/usr/share/elasticsearch/data/snapshots
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+      - es-plugins:/usr/share/elasticsearch/plugins
+      - es-config:/usr/share/elasticsearch/config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/"]
+      interval: 15s
+      timeout: 15s
+      retries: 10
+      start_period: 30s
+  plugin-init:
+    image: elasticsearch:7.17.28
+    volumes:
+      - es-plugins:/usr/share/elasticsearch/plugins
+    command: >
+      bash -c "
+        if [ ! -d /usr/share/elasticsearch/plugins/repository-s3 ]; then
+          bin/elasticsearch-plugin install --batch repository-s3
+        fi
+      "
+  keystore-init:
+    image: elasticsearch:7.17.28
+    user: 1000:1000
+    depends_on:
+      - plugin-init
+    env_file:
+      - .env
+    volumes:
+      - es-config:/config
+    working_dir: /usr/share/elasticsearch/config
+    command: 
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        cd /usr/share/elasticsearch/config
+
+        if [[ ! -f elasticsearch.keystore ]]; then
+          echo "Creating keystore..."
+          elasticsearch-keystore create
+        fi
+
+        if [[ -n "$ELASTIC_PASSWORD" ]]; then
+          if ! (elasticsearch-keystore has-passwd --silent); then
+            if ! (elasticsearch-keystore list | grep -q '^bootstrap.password$'); then
+              echo "$ELASTIC_PASSWORD" | elasticsearch-keystore add -x 'bootstrap.password'
+            fi
+          else
+            if ! (echo "$ES_KEYSTORE_PASS" | elasticsearch-keystore list | grep -q '^bootstrap.password$'); then
+              printf "%s\n%s" "$ES_KEYSTORE_PASS" "$ELASTIC_PASSWORD" | elasticsearch-keystore add -x 'bootstrap.password'
+            fi
+          fi
+        fi
+
+        if ! (elasticsearch-keystore has-passwd --silent); then
+          echo "$AWS_ACCESS_KEY_ID" | elasticsearch-keystore add -x s3.client.default.access_key
+          echo "$AWS_SECRET_ACCESS_KEY" | elasticsearch-keystore add -x s3.client.default.secret_key
+        else
+          printf "%s\n%s\n%s" "$ES_KEYSTORE_PASS" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" | \
+            elasticsearch-keystore add -x s3.client.default.access_key
+          printf "%s\n%s\n%s" "$ES_KEYSTORE_PASS" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" | \
+            elasticsearch-keystore add -x s3.client.default.secret_key
+        fi
+
+        cp -r /usr/share/elasticsearch/config/* /config/
+        echo "Keystore setup complete"
+  # Kibana (可选，用于管理界面)
+  kibana:
+    image: kibana:7.17.28
+    container_name: kibana
+    user: 1000:1000
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - es-network
+
+  # elasticsearch-log-maker:
+  #   image: opennetworking/utils:bash-curl-jq
+  #   container_name: elasticsearch-log-maker
+  #   depends_on:
+  #     elasticsearch:
+  #       condition: service_healthy
+  #   command:
+  #       - "sleep"
+  #       - "3600"
+    # # - /bin/sh
+    # # - -c
+    # # - |
+    #   echo "Waiting for Elasticsearch to become available..."
+    #   until curl -s http://elasticsearch:9200/_cluster/health?wait_for_status=yellow | jq -e '.status' > /dev/null; do
+    #     echo "Elasticsearch not ready, retrying in 2s..."
+    #     sleep 2
+    #   done
+    #   echo "Elasticsearch is ready. Starting log generation..."
+    #   i=1
+    #   while [ "$i" -le 1000 ]; do
+    #     curl -s -X POST http://elasticsearch:9200/logs/_doc \
+    #       -H 'Content-Type: application/json' \
+    #       -d "{\"message\": \"log $i\", \"timestamp\": \"$(date -Iseconds)\"}"
+    #     i=$((i+1))
+    #     sleep 0.01
+    #   done
+    #   echo "Done sending logs. Sleeping..."
+    #   sleep 3600
+      
+    # networks:
+    #   - es-network
+volumes:
+  es-data:
+    driver: local
+  es-plugins:
+    driver: local
+  es-config:
+    driver: local
+
+networks:
+  es-network:
+    driver: bridge
