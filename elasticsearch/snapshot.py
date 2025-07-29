@@ -10,7 +10,7 @@ import os
 import sys
 from pathlib import Path
 
-# Add src to path for development
+# Add src to path for developmen
 src_path = Path(__file__).parent / "src"
 if src_path.exists():
     sys.path.insert(0, str(src_path))
