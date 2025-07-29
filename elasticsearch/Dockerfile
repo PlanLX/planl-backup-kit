@@ -1,4 +1,4 @@
-# 使用 Python 3.12 作为基础镜像
+# Use Python 3.12 as base image
 FROM python:3.12-slim AS builder
 
 ARG PIP_INDEX_URL
@@ -16,9 +16,6 @@ ENV UV_LINK_MODE=copy
 # 设置工作目录
 WORKDIR /app
 
-# 配置华为源
-RUN sed -i 's@deb.debian.org@repo.huaweicloud.com@g' /etc/apt/sources.list.d/debian.sources
-
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \
     curl \
@@ -28,21 +25,18 @@ RUN apt-get update && apt-get install -y \
 RUN pip install uv
 
 # 复制项目文件
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml ./
 COPY src/ ./src/
 COPY snapshot.py ./
 
-# 使用 uv 安装依赖
-RUN uv sync --frozen
+# 使用 uv 动态安装依赖
+RUN uv sync
 
 # 生产阶段
 FROM python:3.12-slim AS production
 
 # 设置工作目录
 WORKDIR /app
-
-# 配置华为源
-RUN sed -i 's@deb.debian.org@repo.huaweicloud.com@g' /etc/apt/sources.list.d/debian.sources
 
 # 安装运行时依赖
 RUN apt-get update && apt-get install -y \
@@ -61,7 +55,7 @@ COPY --from=builder /app/snapshot.py ./
 
 # 设置环境变量
 ENV PATH="/app/.venv/bin:$PATH"
-ENV PYTHONPATH="/app/src:$PYTHONPATH"
+ENV PYTHONPATH="/app/src"
 
 # 创建配置目录
 RUN mkdir -p /app/config && chown -R appuser:appuser /app
