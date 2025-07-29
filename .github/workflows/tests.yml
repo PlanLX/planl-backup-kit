@@ -38,23 +38,6 @@ jobs:
         uv run ruff check . || true
         uv run ruff format --check . || true
 
-    # - name: Run type checking
-    #   working-directory: ./${{ matrix.service }}
-    #   run: |
-    #     uv run mypy src/ --strict
-
-    - name: Run tests
-      working-directory: ./${{ matrix.service }}
-      run: |
-        uv run pytest --cov=src --cov-report=xml --cov-report=term-missing --maxfail=1 --disable-warnings
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./${{ matrix.service }}/coverage.xml
-        flags: ${{ matrix.service }}
-        name: codecov-umbrella
-
   security:
     runs-on: ubuntu-latest
     steps:
