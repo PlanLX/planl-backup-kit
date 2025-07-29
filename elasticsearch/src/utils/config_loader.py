@@ -1,16 +1,16 @@
 """Configuration loading utilities."""
 
-import os
 import json
-import yaml
 from pathlib import Path
-from typing import Dict, Any, Union
+from typing import Any
+
+import yaml
 from dotenv import load_dotenv
 
 from models.config import SnapshotConfig
 
 
-def load_config_from_file(config_path: Union[str, Path]) -> SnapshotConfig:
+def load_config_from_file(config_path: str | Path) -> SnapshotConfig:
     """Load configuration from a file.
 
     Args:
@@ -53,14 +53,14 @@ def load_config_from_env() -> SnapshotConfig:
     if env_file.exists():
         try:
             load_dotenv(env_file)
-        except Exception as e:
+        except Exception:
             # 如果 .env 文件有问题，继续尝试从系统环境变量加载
             pass
 
     try:
         return SnapshotConfig()
     except Exception as e:
-        raise ValueError(f"Failed to load configuration from environment: {e}")
+        raise ValueError(f"Failed to load configuration from environment: {e}") from e
 
 
 def _load_from_env_file(env_path: Path) -> SnapshotConfig:
@@ -71,7 +71,7 @@ def _load_from_env_file(env_path: Path) -> SnapshotConfig:
 
 def _load_from_structured_file(config_path: Path) -> SnapshotConfig:
     """Load configuration from JSON or YAML file."""
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         if config_path.suffix.lower() == ".json":
             config_data = json.load(f)
         else:  # YAML
@@ -81,7 +81,7 @@ def _load_from_structured_file(config_path: Path) -> SnapshotConfig:
     return SnapshotConfig(**config_data)
 
 
-def create_sample_config() -> Dict[str, Any]:
+def create_sample_config() -> dict[str, Any]:
     """Create a sample configuration dictionary.
 
     Returns:
@@ -109,7 +109,7 @@ def create_sample_config() -> Dict[str, Any]:
     }
 
 
-def save_sample_config(config_path: Union[str, Path], format: str = "yaml") -> None:
+def save_sample_config(config_path: str | Path, format: str = "yaml") -> None:
     """Save a sample configuration file.
 
     Args:

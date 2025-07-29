@@ -9,17 +9,16 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Add src to path for development
 src_path = Path(__file__).parent / "src"
 if src_path.exists():
     sys.path.insert(0, str(src_path))
 
-from core.snapshot import ElasticsearchSnapshot
 from core.rotation import SnapshotRotation
+from core.snapshot import ElasticsearchSnapshot
 from models.config import SnapshotConfig
-from utils.logging import setup_logging, get_logger
+from utils.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
@@ -47,7 +46,7 @@ class SnapshotManager:
         """Create snapshot"""
         try:
             logger.info("Starting snapshot creation...")
-            
+
             # Display snapshot information
             logger.info(f"Snapshot cluster: {self.config.snapshot_hosts_list}")
             logger.info(f"Indices: {self.config.indices_list}")
@@ -57,7 +56,7 @@ class SnapshotManager:
             # Create snapshot
             snapshot_handler = ElasticsearchSnapshot(self.config)
             snapshot_name = await snapshot_handler.snapshot()
-            
+
             logger.info(f"Snapshot created successfully: {snapshot_name}")
             return snapshot_name
 
@@ -69,11 +68,13 @@ class SnapshotManager:
         """Clean up expired snapshots"""
         try:
             logger.info("Starting cleanup of expired snapshots...")
-            
+
             # Display cleanup strategy
             logger.info(f"Max snapshots to keep: {self.config.max_snapshots}")
             logger.info(f"Max age in days: {self.config.max_age_days}")
-            logger.info(f"Keep successful snapshots only: {self.config.keep_successful_only}")
+            logger.info(
+                f"Keep successful snapshots only: {self.config.keep_successful_only}"
+            )
 
             # Execute rotation cleanup
             rotation_handler = SnapshotRotation(self.config)
@@ -82,8 +83,10 @@ class SnapshotManager:
                 max_age_days=self.config.max_age_days,
                 keep_successful_only=self.config.keep_successful_only,
             )
-            
-            logger.info(f"Snapshot cleanup completed: deleted {result['total_deleted']}, kept {result['total_kept']}")
+
+            logger.info(
+                f"Snapshot cleanup completed: deleted {result['total_deleted']}, kept {result['total_kept']}"
+            )
             return result
 
         except Exception as e:
@@ -94,13 +97,13 @@ class SnapshotManager:
         """Execute complete snapshot creation and cleanup workflow"""
         try:
             logger.info("Starting snapshot and cleanup workflow...")
-            
+
             # 1. Create snapshot
             snapshot_name = await self.create_snapshot()
-            
+
             # 2. Cleanup expired snapshots
             cleanup_result = await self.cleanup_old_snapshots()
-            
+
             # 3. Return result
             result = {
                 "success": True,
@@ -108,7 +111,7 @@ class SnapshotManager:
                 "cleanup_result": cleanup_result,
                 "timestamp": asyncio.get_event_loop().time(),
             }
-            
+
             logger.info("Snapshot and cleanup workflow completed successfully")
             return result
 
@@ -128,14 +131,14 @@ async def main():
         # Check required environment variables
         required_env_vars = [
             "SNAPSHOT_HOSTS",
-            "ES_REPOSITORY_NAME", 
+            "ES_REPOSITORY_NAME",
             "ES_INDICES",
             "S3_BUCKET_NAME",
             "S3_REGION",
             "AWS_ACCESS_KEY_ID",
             "AWS_SECRET_ACCESS_KEY",
         ]
-        
+
         missing_vars = [var for var in required_env_vars if not os.getenv(var)]
         if missing_vars:
             logger.error(f"Missing required environment variables: {missing_vars}")
@@ -143,14 +146,16 @@ async def main():
 
         # Create snapshot manager
         manager = SnapshotManager()
-        
+
         # Execute snapshot and cleanup workflow
         result = await manager.run_snapshot_and_cleanup()
-        
+
         # Output result
         if result["success"]:
             print(f"SUCCESS: Snapshot {result['snapshot_name']} created successfully")
-            print(f"Cleanup result: Deleted {result['cleanup_result']['total_deleted']} snapshots")
+            print(
+                f"Cleanup result: Deleted {result['cleanup_result']['total_deleted']} snapshots"
+            )
             sys.exit(0)
         else:
             print(f"ERROR: {result['error']}")

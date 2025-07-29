@@ -4,4 +4,4 @@ from .config import SnapshotConfig
 
 __all__ = [
     "SnapshotConfig",
-] 
+]

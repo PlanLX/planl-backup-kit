@@ -1,7 +1,7 @@
 """Configuration models for Elasticsearch snapshot and restore operations."""
 
-from typing import List, Optional
-from pydantic import BaseModel, Field, validator
+
+from pydantic import Field, validator
 from pydantic_settings import BaseSettings
 
 
@@ -12,10 +12,10 @@ class SnapshotConfig(BaseSettings):
     snapshot_hosts: str = Field(
         ..., description="Snapshot Elasticsearch hosts", alias="SNAPSHOT_HOSTS"
     )
-    snapshot_username: Optional[str] = Field(
+    snapshot_username: str | None = Field(
         None, description="Snapshot cluster username", alias="SNAPSHOT_USERNAME"
     )
-    snapshot_password: Optional[str] = Field(
+    snapshot_password: str | None = Field(
         None, description="Snapshot cluster password", alias="SNAPSHOT_PASSWORD"
     )
     snapshot_verify_certs: bool = Field(
@@ -27,10 +27,10 @@ class SnapshotConfig(BaseSettings):
     restore_hosts: str = Field(
         ..., description="Restore Elasticsearch hosts", alias="RESTORE_HOSTS"
     )
-    restore_username: Optional[str] = Field(
+    restore_username: str | None = Field(
         None, description="Restore cluster username", alias="RESTORE_USERNAME"
     )
-    restore_password: Optional[str] = Field(
+    restore_password: str | None = Field(
         None, description="Restore cluster password", alias="RESTORE_PASSWORD"
     )
     restore_verify_certs: bool = Field(
@@ -42,7 +42,7 @@ class SnapshotConfig(BaseSettings):
     repository_name: str = Field(
         ..., description="S3 repository name", alias="ES_REPOSITORY_NAME"
     )
-    snapshot_name: Optional[str] = Field(
+    snapshot_name: str | None = Field(
         None,
         description="Snapshot name (auto-generated if not provided)",
         alias="ES_SNAPSHOT_NAME",
@@ -51,7 +51,7 @@ class SnapshotConfig(BaseSettings):
         ..., description="List of indices to snapshot/restore", alias="ES_INDICES"
     )
 
-        # S3 configuration
+    # S3 configuration
     bucket_name: str = Field(..., description="S3 bucket name", alias="S3_BUCKET_NAME")
     base_path: str = Field(
         default="elasticsearch-snapshots",
@@ -59,14 +59,18 @@ class SnapshotConfig(BaseSettings):
         alias="S3_BASE_PATH",
     )
     region: str = Field(..., description="AWS region", alias="S3_REGION")
-    endpoint: Optional[str] = Field(
-        None, description="S3 endpoint URL (for custom S3-compatible services)", alias="S3_ENDPOINT"
+    endpoint: str | None = Field(
+        None,
+        description="S3 endpoint URL (for custom S3-compatible services)",
+        alias="S3_ENDPOINT",
     )
     protocol: str = Field(
         default="https", description="S3 protocol (http or https)", alias="S3_PROTOCOL"
     )
     path_style_access: bool = Field(
-        default=True, description="Use path-style access for S3", alias="S3_PATH_STYLE_ACCESS"
+        default=True,
+        description="Use path-style access for S3",
+        alias="S3_PATH_STYLE_ACCESS",
     )
 
     # AWS credentials
@@ -76,9 +80,9 @@ class SnapshotConfig(BaseSettings):
     secret_key: str = Field(
         ..., description="AWS secret access key", alias="AWS_SECRET_ACCESS_KEY"
     )
-    
+
     # AWS region (if different from S3 region)
-    aws_region: Optional[str] = Field(
+    aws_region: str | None = Field(
         None, description="AWS region (if different from S3 region)", alias="AWS_REGION"
     )
 
@@ -90,34 +94,40 @@ class SnapshotConfig(BaseSettings):
 
     # Rotation settings
     max_snapshots: int = Field(
-        default=10, description="Maximum number of snapshots to keep", alias="MAX_SNAPSHOTS"
+        default=10,
+        description="Maximum number of snapshots to keep",
+        alias="MAX_SNAPSHOTS",
     )
     max_age_days: int = Field(
         default=30, description="Maximum age of snapshots in days", alias="MAX_AGE_DAYS"
     )
     keep_successful_only: bool = Field(
-        default=True, description="Keep only successful snapshots", alias="KEEP_SUCCESSFUL_ONLY"
+        default=True,
+        description="Keep only successful snapshots",
+        alias="KEEP_SUCCESSFUL_ONLY",
     )
     enable_rotation: bool = Field(
-        default=False, description="Enable automatic snapshot rotation", alias="ENABLE_ROTATION"
+        default=False,
+        description="Enable automatic snapshot rotation",
+        alias="ENABLE_ROTATION",
     )
 
     @property
-    def snapshot_hosts_list(self) -> List[str]:
+    def snapshot_hosts_list(self) -> list[str]:
         """Get snapshot hosts as a list."""
         if "," not in self.snapshot_hosts:
             return [self.snapshot_hosts.strip()]
         return [host.strip() for host in self.snapshot_hosts.split(",")]
 
     @property
-    def restore_hosts_list(self) -> List[str]:
+    def restore_hosts_list(self) -> list[str]:
         """Get restore hosts as a list."""
         if "," not in self.restore_hosts:
             return [self.restore_hosts.strip()]
         return [host.strip() for host in self.restore_hosts.split(",")]
 
     @property
-    def indices_list(self) -> List[str]:
+    def indices_list(self) -> list[str]:
         """Get indices as a list."""
         if "," not in self.indices:
             return [self.indices.strip()]
@@ -140,8 +150,3 @@ class SnapshotConfig(BaseSettings):
     class Config:
         env_prefix = ""
         case_sensitive = False
-
-
-
-
-

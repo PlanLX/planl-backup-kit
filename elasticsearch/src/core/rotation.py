@@ -1,8 +1,8 @@
 """Elasticsearch snapshot rotation functionality."""
 
-import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError, RequestError
 
@@ -18,7 +18,7 @@ class SnapshotRotation:
     def __init__(self, config: SnapshotConfig):
         """Initialize rotation handler with configuration."""
         self.config = config
-        self.es_client: Optional[Elasticsearch] = None
+        self.es_client: Elasticsearch | None = None
 
     async def connect(self) -> None:
         """Establish connection to Elasticsearch cluster."""
@@ -31,10 +31,7 @@ class SnapshotRotation:
             }
 
             # Add authentication if provided
-            if (
-                self.config.snapshot_username
-                and self.config.snapshot_password
-            ):
+            if self.config.snapshot_username and self.config.snapshot_password:
                 connection_params.update(
                     {
                         "basic_auth": (
@@ -67,7 +64,7 @@ class SnapshotRotation:
                     "base_path": self.config.base_path,
                     "region": self.config.region,
                 }
-                
+
                 # Add optional settings if they are provided
                 if self.config.endpoint:
                     settings["endpoint"] = self.config.endpoint
@@ -75,7 +72,7 @@ class SnapshotRotation:
                     settings["protocol"] = self.config.protocol
                 if self.config.path_style_access is not None:
                     settings["path_style_access"] = self.config.path_style_access
-                if hasattr(self.config, 'aws_region') and self.config.aws_region:
+                if hasattr(self.config, "aws_region") and self.config.aws_region:
                     settings["region"] = self.config.aws_region
 
                 repository_body = {
@@ -111,7 +108,7 @@ class SnapshotRotation:
             logger.error(f"Unexpected error creating repository: {e}")
             raise
 
-    async def list_snapshots(self) -> List[Dict[str, Any]]:
+    async def list_snapshots(self) -> list[dict[str, Any]]:
         """List all available snapshots in the repository."""
         if not self.es_client:
             raise RuntimeError("Not connected to Elasticsearch")
@@ -147,7 +144,7 @@ class SnapshotRotation:
             logger.error(f"Failed to delete snapshot '{snapshot_name}': {e}")
             raise
 
-    def parse_snapshot_date(self, snapshot_name: str) -> Optional[datetime]:
+    def parse_snapshot_date(self, snapshot_name: str) -> datetime | None:
         """Parse date from snapshot name."""
         try:
             # 支持多种快照命名格式
@@ -164,10 +161,14 @@ class SnapshotRotation:
                     date_part, time_part = date_str.split("_", 1)
                     # 假设格式为 YYYYMMDD_HHMMSS
                     if len(date_part) == 8 and len(time_part) == 6:
-                        return datetime.strptime(f"{date_part}_{time_part}", "%Y%m%d_%H%M%S")
+                        return datetime.strptime(
+                            f"{date_part}_{time_part}", "%Y%m%d_%H%M%S"
+                        )
             return None
         except Exception as e:
-            logger.warning(f"Could not parse date from snapshot name '{snapshot_name}': {e}")
+            logger.warning(
+                f"Could not parse date from snapshot name '{snapshot_name}': {e}"
+            )
             return None
 
     async def rotate_snapshots(
@@ -175,7 +176,7 @@ class SnapshotRotation:
         max_snapshots: int = 10,
         max_age_days: int = 30,
         keep_successful_only: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Rotate snapshots based on retention policy."""
         if not self.es_client:
             raise RuntimeError("Not connected to Elasticsearch")
@@ -191,24 +192,30 @@ class SnapshotRotation:
             for snapshot in snapshots:
                 snapshot_name = snapshot.get("snapshot", "")
                 state = snapshot.get("state", "")
-                
+
                 # 只保留成功的快照（如果指定）
                 if keep_successful_only and state != "SUCCESS":
-                    logger.info(f"Skipping failed snapshot: {snapshot_name} (state: {state})")
+                    logger.info(
+                        f"Skipping failed snapshot: {snapshot_name} (state: {state})"
+                    )
                     continue
-                
+
                 # 解析快照日期
                 snapshot_date = self.parse_snapshot_date(snapshot_name)
                 if snapshot_date is None:
-                    logger.warning(f"Could not parse date for snapshot: {snapshot_name}")
+                    logger.warning(
+                        f"Could not parse date for snapshot: {snapshot_name}"
+                    )
                     continue
-                
-                valid_snapshots.append({
-                    "name": snapshot_name,
-                    "date": snapshot_date,
-                    "state": state,
-                    "original": snapshot,
-                })
+
+                valid_snapshots.append(
+                    {
+                        "name": snapshot_name,
+                        "date": snapshot_date,
+                        "state": state,
+                        "original": snapshot,
+                    }
+                )
 
             # 按日期排序（最新的在前）
             valid_snapshots.sort(key=lambda x: x["date"], reverse=True)
@@ -234,16 +241,20 @@ class SnapshotRotation:
                     reason = f"Older than {max_age_days} days"
 
                 if should_delete:
-                    snapshots_to_delete.append({
-                        "name": snapshot["name"],
-                        "date": snapshot["date"],
-                        "reason": reason,
-                    })
+                    snapshots_to_delete.append(
+                        {
+                            "name": snapshot["name"],
+                            "date": snapshot["date"],
+                            "reason": reason,
+                        }
+                    )
                 else:
-                    snapshots_to_keep.append({
-                        "name": snapshot["name"],
-                        "date": snapshot["date"],
-                    })
+                    snapshots_to_keep.append(
+                        {
+                            "name": snapshot["name"],
+                            "date": snapshot["date"],
+                        }
+                    )
 
             # 删除过期的快照
             deleted_snapshots = []
@@ -266,7 +277,9 @@ class SnapshotRotation:
                 },
             }
 
-            logger.info(f"Rotation completed: {len(deleted_snapshots)} deleted, {len(snapshots_to_keep)} kept")
+            logger.info(
+                f"Rotation completed: {len(deleted_snapshots)} deleted, {len(snapshots_to_keep)} kept"
+            )
             return result
 
         except Exception as e:
@@ -279,7 +292,7 @@ class SnapshotRotation:
             self.es_client.close()
             logger.info("Closed Elasticsearch connection")
 
-    async def rotate(self, **kwargs) -> Dict[str, Any]:
+    async def rotate(self, **kwargs) -> dict[str, Any]:
         """Perform complete rotation operation."""
         try:
             await self.connect()

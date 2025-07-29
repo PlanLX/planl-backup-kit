@@ -29,15 +29,6 @@ dependencies = [
     "PyYAML>=6.0.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "black>=23.0.0",
-    "ruff>=0.9.0",
-    "mypy>=1.0.0",
-]
-
 [project.scripts]
 es-backup = "cli:main"
 
@@ -48,9 +39,21 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 
+# 新增 dependency-groups 配置
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.9.0",
+    "mypy>=1.0.0",
+]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 88
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -63,10 +66,13 @@ select = [
 ignore = [
     "E501",  # line too long, handled by black
     "B008",  # do not perform function calls in argument defaults
+    "E402",  # module level import not at top of file (for development scripts)
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+"main.py" = ["E402"]
+"snapshot.py" = ["E402"]
 
 [tool.black]
 target-version = ['py312']

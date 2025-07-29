@@ -1,8 +1,8 @@
 """Elasticsearch snapshot functionality."""
 
-import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any
+
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError, RequestError
 
@@ -18,7 +18,7 @@ class ElasticsearchSnapshot:
     def __init__(self, config: SnapshotConfig):
         """Initialize snapshot handler with configuration."""
         self.config = config
-        self.es_client: Optional[Elasticsearch] = None
+        self.es_client: Elasticsearch | None = None
 
     async def connect(self) -> None:
         """Establish connection to Elasticsearch cluster."""
@@ -31,10 +31,7 @@ class ElasticsearchSnapshot:
             }
 
             # Add authentication if provided
-            if (
-                self.config.snapshot_username
-                and self.config.snapshot_password
-            ):
+            if self.config.snapshot_username and self.config.snapshot_password:
                 connection_params.update(
                     {
                         "basic_auth": (
@@ -67,7 +64,7 @@ class ElasticsearchSnapshot:
                     "base_path": self.config.base_path,
                     "region": self.config.region,
                 }
-                
+
                 # Add optional settings if they are provided
                 if self.config.endpoint:
                     settings["endpoint"] = self.config.endpoint
@@ -75,14 +72,14 @@ class ElasticsearchSnapshot:
                     settings["protocol"] = self.config.protocol
                 if self.config.path_style_access is not None:
                     settings["path_style_access"] = self.config.path_style_access
-                if hasattr(self.config, 'aws_region') and self.config.aws_region:
+                if hasattr(self.config, "aws_region") and self.config.aws_region:
                     settings["region"] = self.config.aws_region
 
                 repository_body = {
                     "type": "s3",
                     "settings": settings,
                 }
-                
+
                 logger.info(f"Creating S3 repository with settings: {settings}")
             else:
                 # 默认使用文件系统存储库
@@ -101,15 +98,11 @@ class ElasticsearchSnapshot:
                 verify=False,
             )
 
-            logger.info(
-                f"Created repository: {self.config.repository_name}"
-            )
+            logger.info(f"Created repository: {self.config.repository_name}")
 
         except RequestError as e:
             if "already exists" in str(e):
-                logger.info(
-                    f"Repository already exists: {self.config.repository_name}"
-                )
+                logger.info(f"Repository already exists: {self.config.repository_name}")
             else:
                 logger.error(f"Failed to create repository: {e}")
                 raise
@@ -174,11 +167,11 @@ class ElasticsearchSnapshot:
         except Exception as e:
             logger.error(f"Failed to create snapshot: {e}")
             # 添加更详细的错误信息
-            if hasattr(e, 'info'):
+            if hasattr(e, "info"):
                 logger.error(f"Error details: {e.info}")
             raise
 
-    async def get_snapshot_status(self, snapshot_name: str) -> Dict[str, Any]:
+    async def get_snapshot_status(self, snapshot_name: str) -> dict[str, Any]:
         """Get status of a snapshot."""
         if not self.es_client:
             raise RuntimeError("Not connected to Elasticsearch")
@@ -208,11 +201,10 @@ class ElasticsearchSnapshot:
         """List all snapshots in the repository."""
         if not self.es_client:
             raise RuntimeError("Not connected to Elasticsearch")
-        
+
         try:
             response = self.es_client.snapshot.get(
-                repository=self.config.repository_name,
-                snapshot="_all"
+                repository=self.config.repository_name, snapshot="_all"
             )
             return response.get("snapshots", [])
         except Exception as e:
@@ -223,11 +215,10 @@ class ElasticsearchSnapshot:
         """Delete a specific snapshot."""
         if not self.es_client:
             raise RuntimeError("Not connected to Elasticsearch")
-        
+
         try:
             self.es_client.snapshot.delete(
-                repository=self.config.repository_name,
-                snapshot=snapshot_name
+                repository=self.config.repository_name, snapshot=snapshot_name
             )
             logger.info(f"Deleted snapshot: {snapshot_name}")
         except Exception as e:
@@ -239,51 +230,59 @@ class ElasticsearchSnapshot:
         if not self.config.retention_days and not self.config.retention_count:
             logger.info("No retention settings configured, skipping cleanup")
             return
-        
+
         try:
             await self.connect()
             await self.create_repository()
-            
+
             snapshots = await self.list_snapshots()
             if not snapshots:
                 logger.info("No snapshots found, skipping cleanup")
                 return
-            
+
             # Sort snapshots by start time (newest first)
             snapshots.sort(key=lambda x: x.get("start_time") or "", reverse=True)
-            
+
             snapshots_to_delete = []
-            
+
             # Apply retention by count
-            if self.config.retention_count and len(snapshots) > self.config.retention_count:
+            if (
+                self.config.retention_count
+                and len(snapshots) > self.config.retention_count
+            ):
                 # Keep the newest snapshots, mark older ones for deletion
-                snapshots_to_delete.extend([
-                    snap for snap in snapshots[self.config.retention_count:]
-                ])
-            
+                snapshots_to_delete.extend(
+                    list(snapshots[self.config.retention_count :])
+                )
+
             # Apply retention by days
             if self.config.retention_days:
                 from datetime import datetime, timedelta
-                cutoff_date = datetime.now() - timedelta(days=self.config.retention_days)
-                
+
+                cutoff_date = datetime.now() - timedelta(
+                    days=self.config.retention_days
+                )
+
                 for snapshot in snapshots:
                     start_time_str = snapshot.get("start_time")
                     if not start_time_str:
                         continue
-                    
+
                     # Parse the start time (format: "2023-12-01T10:30:00.123Z")
                     try:
                         start_time = datetime.strptime(
                             start_time_str.split(".")[0], "%Y-%m-%dT%H:%M:%S"
                         )
-                        
+
                         if start_time < cutoff_date:
                             # Only delete if not already marked for deletion
                             if snapshot not in snapshots_to_delete:
                                 snapshots_to_delete.append(snapshot)
                     except ValueError:
-                        logger.warning(f"Could not parse start time for snapshot {snapshot.get('snapshot')}")
-            
+                        logger.warning(
+                            f"Could not parse start time for snapshot {snapshot.get('snapshot')}"
+                        )
+
             # Remove duplicates while preserving order
             unique_snapshots_to_delete = []
             seen = set()
@@ -292,7 +291,7 @@ class ElasticsearchSnapshot:
                 if snapshot_name not in seen:
                     seen.add(snapshot_name)
                     unique_snapshots_to_delete.append(snapshot)
-            
+
             # Delete the snapshots
             for snapshot in unique_snapshots_to_delete:
                 snapshot_name = snapshot.get("snapshot")
@@ -301,12 +300,14 @@ class ElasticsearchSnapshot:
                 except Exception as e:
                     logger.error(f"Failed to delete snapshot {snapshot_name}: {e}")
                     # Continue with other deletions
-            
+
             if unique_snapshots_to_delete:
-                logger.info(f"Cleaned up {len(unique_snapshots_to_delete)} old snapshots")
+                logger.info(
+                    f"Cleaned up {len(unique_snapshots_to_delete)} old snapshots"
+                )
             else:
                 logger.info("No old snapshots to clean up")
-                
+
         except Exception as e:
             logger.error(f"Failed to cleanup old snapshots: {e}")
             raise

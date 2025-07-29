@@ -2,25 +2,24 @@
 
 import asyncio
 import sys
-from pathlib import Path
-from typing import Optional
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import click
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from core.snapshot import ElasticsearchSnapshot
 from core.restore import ElasticsearchRestore
 from core.rotation import SnapshotRotation
+from core.snapshot import ElasticsearchSnapshot
 from models.config import SnapshotConfig
 from utils.config_loader import (
-    load_config_from_file,
     load_config_from_env,
+    load_config_from_file,
     save_sample_config,
 )
-from utils.logging import setup_logging, get_logger
+from utils.logging import get_logger, setup_logging
 
 console = Console()
 logger = get_logger(__name__)
@@ -42,7 +41,7 @@ logger = get_logger(__name__)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 @click.pass_context
 def cli(
-    ctx: click.Context, config: Optional[Path], log_level: str, verbose: bool
+    ctx: click.Context, config: Path | None, log_level: str, verbose: bool
 ) -> None:
     """PlanLX Elasticsearch Snapshot Kit - 快照和恢复Elasticsearch数据到S3。"""
     # Setup logging
@@ -64,7 +63,9 @@ def cli(
             ctx.obj = load_config_from_env()
         except Exception as e:
             console.print(f"[yellow]环境变量配置加载失败: {e}[/yellow]")
-            console.print("[yellow]请设置必要的环境变量或使用 --config 参数指定配置文件[/yellow]")
+            console.print(
+                "[yellow]请设置必要的环境变量或使用 --config 参数指定配置文件[/yellow]"
+            )
             # 不退出，让命令自己处理配置缺失的情况
 
 
@@ -96,7 +97,7 @@ def init(output: Path, output_format: str) -> None:
 
 @cli.command()
 @click.pass_obj
-def snapshot(config: Optional[SnapshotConfig]) -> None:
+def snapshot(config: SnapshotConfig | None) -> None:
     """从源Elasticsearch集群创建快照到S3。"""
     if config is None:
         console.print("[red]错误: 未找到配置信息[/red]")
@@ -113,7 +114,7 @@ def snapshot(config: Optional[SnapshotConfig]) -> None:
         console.print("  export S3_BUCKET_NAME=my-bucket")
         console.print("  uv run python main.py snapshot")
         sys.exit(1)
-    
+
     console.print(
         Panel.fit(
             "[bold blue]开始快照操作[/bold blue]\n"
@@ -283,23 +284,25 @@ def rotate(
                 # 模拟运行，只显示将要删除的快照
                 snapshots = await rotation_handler.list_snapshots()
                 valid_snapshots = []
-                
+
                 for snapshot in snapshots:
                     snapshot_name = snapshot.get("snapshot", "")
                     state = snapshot.get("state", "")
-                    
+
                     if keep_successful_only and state != "SUCCESS":
                         continue
-                    
+
                     snapshot_date = rotation_handler.parse_snapshot_date(snapshot_name)
                     if snapshot_date is None:
                         continue
-                    
-                    valid_snapshots.append({
-                        "name": snapshot_name,
-                        "date": snapshot_date,
-                        "state": state,
-                    })
+
+                    valid_snapshots.append(
+                        {
+                            "name": snapshot_name,
+                            "date": snapshot_date,
+                            "state": state,
+                        }
+                    )
 
                 valid_snapshots.sort(key=lambda x: x["date"], reverse=True)
                 cutoff_date = datetime.now() - timedelta(days=max_age_days)
@@ -319,29 +322,41 @@ def rotate(
                         reason = f"超过 {max_age_days} 天"
 
                     if should_delete:
-                        snapshots_to_delete.append({
-                            "name": snapshot["name"],
-                            "date": snapshot["date"],
-                            "reason": reason,
-                        })
+                        snapshots_to_delete.append(
+                            {
+                                "name": snapshot["name"],
+                                "date": snapshot["date"],
+                                "reason": reason,
+                            }
+                        )
                     else:
-                        snapshots_to_keep.append({
-                            "name": snapshot["name"],
-                            "date": snapshot["date"],
-                        })
+                        snapshots_to_keep.append(
+                            {
+                                "name": snapshot["name"],
+                                "date": snapshot["date"],
+                            }
+                        )
 
                 # 显示结果
                 if snapshots_to_delete:
-                    console.print(f"[yellow]将要删除 {len(snapshots_to_delete)} 个快照:[/yellow]")
+                    console.print(
+                        f"[yellow]将要删除 {len(snapshots_to_delete)} 个快照:[/yellow]"
+                    )
                     for snapshot in snapshots_to_delete:
-                        console.print(f"  - {snapshot['name']} ({snapshot['date'].strftime('%Y-%m-%d %H:%M:%S')}) - {snapshot['reason']}")
+                        console.print(
+                            f"  - {snapshot['name']} ({snapshot['date'].strftime('%Y-%m-%d %H:%M:%S')}) - {snapshot['reason']}"
+                        )
                 else:
                     console.print("[green]没有需要删除的快照[/green]")
 
                 if snapshots_to_keep:
-                    console.print(f"[green]将保留 {len(snapshots_to_keep)} 个快照:[/green]")
+                    console.print(
+                        f"[green]将保留 {len(snapshots_to_keep)} 个快照:[/green]"
+                    )
                     for snapshot in snapshots_to_keep:
-                        console.print(f"  - {snapshot['name']} ({snapshot['date'].strftime('%Y-%m-%d %H:%M:%S')})")
+                        console.print(
+                            f"  - {snapshot['name']} ({snapshot['date'].strftime('%Y-%m-%d %H:%M:%S')})"
+                        )
 
             else:
                 # 实际执行轮转
@@ -353,16 +368,22 @@ def rotate(
 
                 # 显示结果
                 if result["deleted"]:
-                    console.print(f"[red]已删除 {result['total_deleted']} 个快照:[/red]")
+                    console.print(
+                        f"[red]已删除 {result['total_deleted']} 个快照:[/red]"
+                    )
                     for snapshot in result["deleted"]:
-                        console.print(f"  - {snapshot['name']} ({snapshot['date'].strftime('%Y-%m-%d %H:%M:%S')}) - {snapshot['reason']}")
+                        console.print(
+                            f"  - {snapshot['name']} ({snapshot['date'].strftime('%Y-%m-%d %H:%M:%S')}) - {snapshot['reason']}"
+                        )
                 else:
                     console.print("[green]没有删除任何快照[/green]")
 
                 if result["kept"]:
                     console.print(f"[green]保留 {result['total_kept']} 个快照:[/green]")
                     for snapshot in result["kept"]:
-                        console.print(f"  - {snapshot['name']} ({snapshot['date'].strftime('%Y-%m-%d %H:%M:%S')})")
+                        console.print(
+                            f"  - {snapshot['name']} ({snapshot['date'].strftime('%Y-%m-%d %H:%M:%S')})"
+                        )
 
         except Exception as e:
             logger.error(f"轮转失败: {e}")
@@ -410,12 +431,14 @@ def cleanup(
     force: bool,
 ) -> None:
     """清理指定的快照。"""
-    
+
     # 验证参数
     if not snapshot_names and not all and not pattern and not older_than:
-        console.print("[red]错误: 必须指定要清理的快照名称、--all、--pattern 或 --older-than 参数[/red]")
+        console.print(
+            "[red]错误: 必须指定要清理的快照名称、--all、--pattern 或 --older-than 参数[/red]"
+        )
         sys.exit(1)
-    
+
     if all and (snapshot_names or pattern or older_than):
         console.print("[red]错误: --all 参数不能与其他参数同时使用[/red]")
         sys.exit(1)
@@ -437,10 +460,11 @@ def cleanup(
 
     async def run_cleanup() -> None:
         try:
-            from core.rotation import SnapshotRotation
             import re
             from datetime import datetime
-            
+
+            from core.rotation import SnapshotRotation
+
             cleanup_handler = SnapshotRotation(config)
             await cleanup_handler.connect()
             await cleanup_handler.create_repository()
@@ -453,12 +477,14 @@ def cleanup(
 
             # 确定要删除的快照
             snapshots_to_delete = []
-            
+
             if all:
                 # 删除所有快照
                 snapshots_to_delete = [s.get("snapshot", "") for s in all_snapshots]
-                console.print(f"[yellow]将要删除所有 {len(snapshots_to_delete)} 个快照[/yellow]")
-                
+                console.print(
+                    f"[yellow]将要删除所有 {len(snapshots_to_delete)} 个快照[/yellow]"
+                )
+
             elif snapshot_names:
                 # 删除指定的快照
                 existing_snapshots = [s.get("snapshot", "") for s in all_snapshots]
@@ -467,7 +493,7 @@ def cleanup(
                         snapshots_to_delete.append(name)
                     else:
                         console.print(f"[yellow]警告: 快照 '{name}' 不存在[/yellow]")
-                        
+
             elif pattern:
                 # 根据模式删除快照
                 existing_snapshots = [s.get("snapshot", "") for s in all_snapshots]
@@ -479,18 +505,22 @@ def cleanup(
                 except re.error as e:
                     console.print(f"[red]错误: 无效的模式 '{pattern}': {e}[/red]")
                     return
-                    
+
             elif older_than:
                 # 删除早于指定日期的快照
                 try:
                     cutoff_date = datetime.strptime(older_than, "%Y-%m-%d")
                     for snapshot in all_snapshots:
                         snapshot_name = snapshot.get("snapshot", "")
-                        snapshot_date = cleanup_handler.parse_snapshot_date(snapshot_name)
+                        snapshot_date = cleanup_handler.parse_snapshot_date(
+                            snapshot_name
+                        )
                         if snapshot_date and snapshot_date.date() < cutoff_date.date():
                             snapshots_to_delete.append(snapshot_name)
                 except ValueError as e:
-                    console.print(f"[red]错误: 无效的日期格式 '{older_than}': {e}[/red]")
+                    console.print(
+                        f"[red]错误: 无效的日期格式 '{older_than}': {e}[/red]"
+                    )
                     return
 
             if not snapshots_to_delete:
@@ -498,14 +528,16 @@ def cleanup(
                 return
 
             # 显示将要删除的快照
-            console.print(f"[yellow]将要删除 {len(snapshots_to_delete)} 个快照:[/yellow]")
+            console.print(
+                f"[yellow]将要删除 {len(snapshots_to_delete)} 个快照:[/yellow]"
+            )
             for snapshot in snapshots_to_delete:
                 console.print(f"  - {snapshot}")
 
             # 确认删除
             if not force and not dry_run:
                 confirm = input("\n确认删除这些快照吗? (y/N): ")
-                if confirm.lower() not in ['y', 'yes']:
+                if confirm.lower() not in ["y", "yes"]:
                     console.print("[yellow]操作已取消[/yellow]")
                     return
 
@@ -516,7 +548,7 @@ def cleanup(
             # 执行删除
             deleted_count = 0
             failed_count = 0
-            
+
             for snapshot in snapshots_to_delete:
                 try:
                     await cleanup_handler.delete_snapshot(snapshot)
@@ -527,7 +559,7 @@ def cleanup(
                     console.print(f"[red]✗ 删除失败: {snapshot} - {e}[/red]")
 
             # 显示结果
-            console.print(f"\n[bold]清理完成:[/bold]")
+            console.print("\n[bold]清理完成:[/bold]")
             console.print(f"[green]成功删除: {deleted_count} 个快照[/green]")
             if failed_count > 0:
                 console.print(f"[red]删除失败: {failed_count} 个快照[/red]")

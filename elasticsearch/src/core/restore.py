@@ -1,7 +1,7 @@
 """Elasticsearch restore functionality."""
 
-import logging
-from typing import Dict, Any, Optional, List
+from typing import Any
+
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError, RequestError
 
@@ -17,7 +17,7 @@ class ElasticsearchRestore:
     def __init__(self, config: SnapshotConfig):
         """Initialize restore handler with configuration."""
         self.config = config
-        self.es_client: Optional[Elasticsearch] = None
+        self.es_client: Elasticsearch | None = None
 
     async def connect(self) -> None:
         """Establish connection to Elasticsearch cluster."""
@@ -30,10 +30,7 @@ class ElasticsearchRestore:
             }
 
             # Add authentication if provided
-            if (
-                self.config.restore_username
-                and self.config.restore_password
-            ):
+            if self.config.restore_username and self.config.restore_password:
                 connection_params.update(
                     {
                         "basic_auth": (
@@ -66,7 +63,7 @@ class ElasticsearchRestore:
                     "base_path": self.config.base_path,
                     "region": self.config.region,
                 }
-                
+
                 # Add optional settings if they are provided
                 if self.config.endpoint:
                     settings["endpoint"] = self.config.endpoint
@@ -75,7 +72,7 @@ class ElasticsearchRestore:
                     settings["protocol"] = self.config.protocol
                 if self.config.path_style_access is not None:
                     settings["path_style_access"] = self.config.path_style_access
-                if hasattr(self.config, 'aws_region') and self.config.aws_region:
+                if hasattr(self.config, "aws_region") and self.config.aws_region:
                     settings["region"] = self.config.aws_region
 
                 repository_body = {
@@ -99,15 +96,11 @@ class ElasticsearchRestore:
                 verify=False,
             )
 
-            logger.info(
-                f"Created repository: {self.config.repository_name}"
-            )
+            logger.info(f"Created repository: {self.config.repository_name}")
 
         except RequestError as e:
             if "already exists" in str(e):
-                logger.info(
-                    f"Repository already exists: {self.config.repository_name}"
-                )
+                logger.info(f"Repository already exists: {self.config.repository_name}")
             else:
                 logger.error(f"Failed to create repository: {e}")
                 raise
@@ -115,7 +108,7 @@ class ElasticsearchRestore:
             logger.error(f"Unexpected error creating repository: {e}")
             raise
 
-    async def close_indices(self, indices: List[str]) -> None:
+    async def close_indices(self, indices: list[str]) -> None:
         """Close indices before restore operation."""
         if not self.es_client:
             raise RuntimeError("Not connected to Elasticsearch")
@@ -134,7 +127,7 @@ class ElasticsearchRestore:
                 logger.error(f"Failed to close index '{index}': {e}")
                 raise
 
-    async def open_indices(self, indices: List[str]) -> None:
+    async def open_indices(self, indices: list[str]) -> None:
         """Open indices after restore operation."""
         if not self.es_client:
             raise RuntimeError("Not connected to Elasticsearch")
@@ -177,7 +170,7 @@ class ElasticsearchRestore:
             await self.close_indices(self.config.indices_list)
 
             # Perform restore
-            response = self.es_client.snapshot.restore(
+            self.es_client.snapshot.restore(
                 repository=self.config.repository_name,
                 snapshot=snapshot_name,
                 body=restore_body,
@@ -208,7 +201,7 @@ class ElasticsearchRestore:
                 )
             raise
 
-    async def get_snapshot_status(self, snapshot_name: str) -> Dict[str, Any]:
+    async def get_snapshot_status(self, snapshot_name: str) -> dict[str, Any]:
         """Get status of a snapshot."""
         if not self.es_client:
             raise RuntimeError("Not connected to Elasticsearch")
@@ -228,7 +221,7 @@ class ElasticsearchRestore:
             logger.error(f"Failed to get snapshot status: {e}")
             raise
 
-    async def list_snapshots(self) -> List[Dict[str, Any]]:
+    async def list_snapshots(self) -> list[dict[str, Any]]:
         """List all available snapshots in the repository."""
         if not self.es_client:
             raise RuntimeError("Not connected to Elasticsearch")
