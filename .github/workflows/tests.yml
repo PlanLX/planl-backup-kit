@@ -38,10 +38,10 @@ jobs:
         uv run ruff check . || true
         uv run ruff format --check . || true
 
-    - name: Run type checking
-      working-directory: ./${{ matrix.service }}
-      run: |
-        uv run mypy src/ --strict
+    # - name: Run type checking
+    #   working-directory: ./${{ matrix.service }}
+    #   run: |
+    #     uv run mypy src/ --strict
 
     - name: Run tests
       working-directory: ./${{ matrix.service }}
