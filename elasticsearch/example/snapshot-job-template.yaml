@@ -1,0 +1,135 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: elasticsearch-snapshot
+  namespace: default
+  labels:
+    app: elasticsearch-snapshot
+    version: v1.0.0
+    component: backup
+  annotations:
+    description: "Elasticsearch snapshot backup job"
+    schedule: "Daily at 2:00 AM UTC"
+spec:
+  schedule: "0 2 * * *"  # Run daily at 2:00 AM UTC
+  concurrencyPolicy: Forbid  # Don't allow concurrent jobs
+  successfulJobsHistoryLimit: 7  # Keep 7 successful job records
+  failedJobsHistoryLimit: 3     # Keep 3 failed job records
+  startingDeadlineSeconds: 300  # Job must start within 5 minutes
+  jobTemplate:
+    spec:
+      backoffLimit: 3  # Retry up to 3 times on failure
+      template:
+        metadata:
+          labels:
+            app: elasticsearch-snapshot
+            job: elasticsearch-backup
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+          - name: snapshot
+            image: ghcr.io/planlx/planl-backup-kit/elasticsearch:latest
+            imagePullPolicy: Always
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                - ALL
+            env:
+            # Elasticsearch Configuration
+            - name: SNAPSHOT_HOSTS
+              value: "http://elasticsearch-service:9200"
+            - name: SNAPSHOT_USERNAME
+              value: "elastic"
+            - name: SNAPSHOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-secret
+                  key: password
+            - name: SNAPSHOT_VERIFY_CERTS
+              value: "false"
+            - name: SNAPSHOT_TIMEOUT
+              value: "300"  # 5 minutes timeout
+            
+            # Repository Configuration
+            - name: ES_REPOSITORY_NAME
+              value: "s3_backup"
+            - name: ES_INDICES
+              value: "*"  # Backup all indices, can be customized like "index1,index2"
+            - name: ES_WAIT_FOR_COMPLETION
+              value: "true"
+            
+            # S3 Configuration
+            - name: S3_BUCKET_NAME
+              value: "your-elasticsearch-snapshots"
+            - name: S3_BASE_PATH
+              value: "elasticsearch-snapshots"
+            - name: S3_REGION
+              value: "us-east-1"
+            - name: S3_ENDPOINT
+              value: "https://s3.amazonaws.com"
+            - name: S3_PROTOCOL
+              value: "https"
+            - name: S3_PATH_STYLE_ACCESS
+              value: "false"
+            - name: S3_COMPRESS
+              value: "true"
+            
+            # AWS Credentials
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secret
+                  key: access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secret
+                  key: secret-access-key
+            - name: AWS_REGION
+              value: "us-east-1"
+            
+            # Logging Configuration
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: LOG_FORMAT
+              value: "json"
+            
+            # Health Check Configuration
+            - name: HEALTH_CHECK_ENABLED
+              value: "true"
+            - name: HEALTH_CHECK_INTERVAL
+              value: "30"
+            
+            # Backup Retention Configuration
+            - name: CLEANUP_OLD_SNAPSHOTS
+              value: "true"
+            - name: SNAPSHOT_RETENTION_DAYS
+              value: "30"
+            - name: MAX_SNAPSHOTS
+              value: "10"
+            - name: MAX_AGE_DAYS
+              value: "30"
+            - name: KEEP_SUCCESSFUL_ONLY
+              value: "true"
+            - name: ENABLE_ROTATION
+              value: "false"
+            
+            # Backward Compatibility Fields
+            - name: RETENTION_DAYS
+              value: "30"
+            - name: RETENTION_COUNT
+              value: "10"

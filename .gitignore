@@ -274,5 +274,9 @@ Thumbs.db
 # Custom
 *.log
 *.out
-.claude
 uv.lock
+.claude
+CLAUDE.local.md
+PLAN.md
+.memory.local/
+

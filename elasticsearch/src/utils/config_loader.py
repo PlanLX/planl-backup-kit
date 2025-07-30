@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
-from models.config import SnapshotConfig
+from src.models.config import SnapshotConfig
 
 
 def load_config_from_file(config_path: str | Path) -> SnapshotConfig:

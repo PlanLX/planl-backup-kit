@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""K8s Elasticsearch Snapshot and Cleanup Tool
+"""Elasticsearch Snapshot and Cleanup Tool
 
 Elasticsearch snapshot and cleanup tool designed for Kubernetes environments.
 Reads configuration from environment variables, creates snapshots and automatically cleans up expired snapshots.
@@ -8,28 +8,25 @@ Reads configuration from environment variables, creates snapshots and automatica
 import asyncio
 import os
 import sys
-from pathlib import Path
 
-# Add src to path for developmen
-src_path = Path(__file__).parent / "src"
-if src_path.exists():
-    sys.path.insert(0, str(src_path))
-
-from core.rotation import SnapshotRotation
-from core.snapshot import ElasticsearchSnapshot
-from models.config import SnapshotConfig
-from utils.logging import get_logger, setup_logging
+from src.core.rotation import SnapshotRotation
+from src.core.snapshot import ElasticsearchSnapshot
+from src.models.config import SnapshotConfig
+from src.utils.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
 
 class SnapshotManager:
-    """Snapshot manager for K8s environment"""
+    """Snapshot manager for Elasticsearch"""
 
     def __init__(self):
         """Initialize snapshot manager"""
         self.config = self._load_config_from_env()
-        setup_logging(level=os.getenv("LOG_LEVEL", "INFO"))
+        setup_logging(
+            level=os.getenv("LOG_LEVEL", "INFO"),
+            log_format=os.getenv("LOG_FORMAT", "plain")
+        )
 
     def _load_config_from_env(self) -> SnapshotConfig:
         """Load configuration from environment variables"""
@@ -39,41 +36,43 @@ class SnapshotManager:
             logger.info("Configuration loaded successfully")
             return config
         except Exception as e:
-            logger.error(f"Failed to load configuration: {e}")
+            logger.error("Failed to load configuration", error=str(e))
             raise
 
     async def create_snapshot(self) -> str:
         """Create snapshot"""
         try:
-            logger.info("Starting snapshot creation...")
+            logger.info("Starting snapshot creation")
 
             # Display snapshot information
-            logger.info(f"Snapshot cluster: {self.config.snapshot_hosts_list}")
-            logger.info(f"Indices: {self.config.indices_list}")
-            logger.info(f"S3 bucket: {self.config.bucket_name}")
-            logger.info(f"Repository: {self.config.repository_name}")
+            logger.info("Snapshot configuration",
+                snapshot_cluster=self.config.snapshot_hosts_list,
+                indices=self.config.indices_list,
+                s3_bucket=self.config.bucket_name,
+                repository=self.config.repository_name
+            )
 
             # Create snapshot
             snapshot_handler = ElasticsearchSnapshot(self.config)
             snapshot_name = await snapshot_handler.snapshot()
 
-            logger.info(f"Snapshot created successfully: {snapshot_name}")
+            logger.info("Snapshot created successfully", snapshot_name=snapshot_name)
             return snapshot_name
 
         except Exception as e:
-            logger.error(f"Failed to create snapshot: {e}")
+            logger.error("Failed to create snapshot", error=str(e))
             raise
 
     async def cleanup_old_snapshots(self) -> dict:
         """Clean up expired snapshots"""
         try:
-            logger.info("Starting cleanup of expired snapshots...")
+            logger.info("Starting cleanup of expired snapshots")
 
             # Display cleanup strategy
-            logger.info(f"Max snapshots to keep: {self.config.max_snapshots}")
-            logger.info(f"Max age in days: {self.config.max_age_days}")
-            logger.info(
-                f"Keep successful snapshots only: {self.config.keep_successful_only}"
+            logger.info("Cleanup configuration",
+                max_snapshots=self.config.max_snapshots,
+                max_age_days=self.config.max_age_days,
+                keep_successful_only=self.config.keep_successful_only
             )
 
             # Execute rotation cleanup
@@ -84,19 +83,20 @@ class SnapshotManager:
                 keep_successful_only=self.config.keep_successful_only,
             )
 
-            logger.info(
-                f"Snapshot cleanup completed: deleted {result['total_deleted']}, kept {result['total_kept']}"
+            logger.info("Snapshot cleanup completed",
+                deleted_count=result['total_deleted'],
+                kept_count=result['total_kept']
             )
             return result
 
         except Exception as e:
-            logger.error(f"Failed to cleanup snapshots: {e}")
+            logger.error("Failed to cleanup snapshots", error=str(e))
             raise
 
     async def run_snapshot_and_cleanup(self) -> dict:
         """Execute complete snapshot creation and cleanup workflow"""
         try:
-            logger.info("Starting snapshot and cleanup workflow...")
+            logger.info("Starting snapshot and cleanup workflow")
 
             # 1. Create snapshot
             snapshot_name = await self.create_snapshot()
@@ -112,11 +112,15 @@ class SnapshotManager:
                 "timestamp": asyncio.get_event_loop().time(),
             }
 
-            logger.info("Snapshot and cleanup workflow completed successfully")
+            logger.info("Snapshot and cleanup workflow completed successfully",
+                snapshot_name=snapshot_name,
+                deleted_count=cleanup_result['total_deleted'],
+                kept_count=cleanup_result['total_kept']
+            )
             return result
 
         except Exception as e:
-            logger.error(f"Snapshot and cleanup workflow failed: {e}")
+            logger.error("Snapshot and cleanup workflow failed", error=str(e))
             result = {
                 "success": False,
                 "error": str(e),
@@ -141,7 +145,7 @@ async def main():
 
         missing_vars = [var for var in required_env_vars if not os.getenv(var)]
         if missing_vars:
-            logger.error(f"Missing required environment variables: {missing_vars}")
+            logger.error("Missing required environment variables", missing_vars=missing_vars)
             sys.exit(1)
 
         # Create snapshot manager
@@ -150,20 +154,23 @@ async def main():
         # Execute snapshot and cleanup workflow
         result = await manager.run_snapshot_and_cleanup()
 
-        # Output result
+        # 输出结果改为 logger
         if result["success"]:
-            print(f"SUCCESS: Snapshot {result['snapshot_name']} created successfully")
-            print(
-                f"Cleanup result: Deleted {result['cleanup_result']['total_deleted']} snapshots"
+            logger.info(
+                "Snapshot created successfully",
+                snapshot_name=result["snapshot_name"],
+                deleted_count=result["cleanup_result"]["total_deleted"],
             )
             sys.exit(0)
         else:
-            print(f"ERROR: {result['error']}")
+            logger.error(
+                "Snapshot or cleanup failed",
+                error=result.get("error", "Unknown error"),
+            )
             sys.exit(1)
 
     except Exception as e:
-        logger.error(f"Program execution failed: {e}")
-        print(f"ERROR: {e}")
+        logger.error("Program execution failed", error=str(e))
         sys.exit(1)
 
 

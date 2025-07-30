@@ -6,8 +6,8 @@ from typing import Any
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError, RequestError
 
-from models.config import SnapshotConfig
-from utils.logging import get_logger
+from src.models.config import SnapshotConfig
+from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 

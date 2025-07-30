@@ -2,7 +2,7 @@
 
 from enum import Enum
 from typing import Optional
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -31,7 +31,8 @@ class BaseElasticsearchConfig(BaseSettings):
             return [self.hosts.strip()]
         return [host.strip() for host in self.hosts.split(",")]
 
-    @validator("hosts")
+    @field_validator("hosts")
+    @classmethod
     def validate_hosts(cls, v):
         """Validate that at least one host is provided."""
         if not v or not v.strip():
@@ -204,42 +205,48 @@ class SnapshotConfig(BaseSettings):
             return [self.indices.strip()]
         return [index.strip() for index in self.indices.split(",")]
 
-    @validator("snapshot_hosts")
+    @field_validator("snapshot_hosts")
+    @classmethod
     def validate_snapshot_hosts(cls, v):
         """Validate that at least one snapshot host is provided."""
         if not v or not v.strip():
             raise ValueError("At least one snapshot host must be provided")
         return v
 
-    @validator("indices")
+    @field_validator("indices")
+    @classmethod
     def validate_indices(cls, v):
         """Validate that at least one index is specified."""
         if not v or not v.strip():
             raise ValueError("At least one index must be specified")
         return v
 
-    @validator("repository_name")
+    @field_validator("repository_name")
+    @classmethod
     def validate_repository_name(cls, v):
         """Validate repository name."""
         if not v or not v.strip():
             raise ValueError("Repository name must be specified")
         return v
 
-    @validator("bucket_name")
+    @field_validator("bucket_name")
+    @classmethod
     def validate_bucket_name(cls, v):
         """Validate S3 bucket name."""
         if not v or not v.strip():
             raise ValueError("S3 bucket name must be specified")
         return v
 
-    @validator("access_key")
+    @field_validator("access_key")
+    @classmethod
     def validate_access_key(cls, v):
         """Validate AWS access key."""
         if not v or not v.strip():
             raise ValueError("AWS access key must be specified")
         return v
 
-    @validator("secret_key")
+    @field_validator("secret_key")
+    @classmethod
     def validate_secret_key(cls, v):
         """Validate AWS secret key."""
         if not v or not v.strip():
@@ -357,21 +364,24 @@ class RestoreConfig(BaseSettings):
             return [self.indices.strip()]
         return [index.strip() for index in self.indices.split(",")]
 
-    @validator("restore_hosts")
+    @field_validator("restore_hosts")
+    @classmethod
     def validate_restore_hosts(cls, v):
         """Validate that at least one restore host is provided."""
         if not v or not v.strip():
             raise ValueError("At least one restore host must be provided")
         return v
 
-    @validator("snapshot_name")
+    @field_validator("snapshot_name")
+    @classmethod
     def validate_snapshot_name(cls, v):
         """Validate snapshot name is provided for restore."""
         if not v or not v.strip():
             raise ValueError("Snapshot name must be specified for restore operations")
         return v
 
-    @validator("indices")
+    @field_validator("indices")
+    @classmethod
     def validate_indices(cls, v):
         """Validate that at least one index is specified."""
         if not v or not v.strip():

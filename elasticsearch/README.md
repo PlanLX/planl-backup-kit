@@ -6,6 +6,7 @@ Elasticsearch备份和恢复工具包，支持S3存储。
 
 - 🔄 **备份和恢复**: 支持Elasticsearch索引的完整备份和恢复
 - ☁️ **S3集成**: 无缝集成AWS S3存储
+- 🧹 **快照清理**: 独立的快照清理工具，支持多种清理策略
 - 🛡️ **安全认证**: 支持Elasticsearch和AWS的身份验证
 - 📊 **状态监控**: 实时查看备份和恢复状态
 - 🎯 **灵活配置**: 支持多种配置文件格式（YAML、JSON、环境变量）
@@ -91,6 +92,39 @@ python main.py -c config.yaml list-snapshots
 python main.py -c config.yaml status snapshot-2024-01-15T10-30-00
 ```
 
+#### 清理快照
+
+```bash
+# 清理指定快照
+python main.py -c config.yaml cleanup --names snapshot-2024-01-15T10-30-00,snapshot-2024-01-14T09-15-00
+
+# 清理所有快照
+python main.py -c config.yaml cleanup --all
+
+# 清理匹配模式的快照
+python main.py -c config.yaml cleanup --pattern "snapshot-2024*"
+
+# 清理早于指定日期的快照
+python main.py -c config.yaml cleanup --older-than "2024-01-01"
+
+# 模拟运行（预览将要删除的快照）
+python main.py -c config.yaml cleanup --all --dry-run
+```
+
+#### 独立清理工具
+
+项目还提供了一个独立的清理工具：
+
+```bash
+# 使用独立清理工具
+python cleanup.py --all
+
+# 或者使用命令行工具
+es-cleanup --all
+```
+
+更多清理工具的使用方法，请参考 [清理工具文档](docs/cleanup.md)。
+
 ## 环境变量配置
 
 您也可以使用环境变量进行配置：
@@ -127,6 +161,7 @@ export BACKUP_AWS_CREDENTIALS__REGION="us-east-1"
 - `restore <snapshot_name>`: 执行恢复操作
 - `list-snapshots`: 列出所有快照
 - `status <snapshot_name>`: 查看快照状态
+- `cleanup`: 清理快照（支持多种清理策略）
 
 ## 开发
 

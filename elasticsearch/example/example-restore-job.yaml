@@ -1,0 +1,113 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elasticsearch-restore
+  namespace: default
+  labels:
+    app: elasticsearch-restore
+    version: v1.0.0
+    component: restore
+  annotations:
+    description: "Elasticsearch snapshot restore job (one-time)"
+spec:
+  backoffLimit: 3  # Retry up to 3 times on failure
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-restore
+        job: elasticsearch-restore
+    spec:
+      restartPolicy: Never  # Don't restart on completion
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: restore
+        image: ghcr.io/planlx/planl-backup-kit/elasticsearch:latest
+        imagePullPolicy: Always
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        env:
+        # Elasticsearch Configuration for Restore Cluster
+        - name: RESTORE_HOSTS
+          value: "http://elasticsearch-restore-service:9200"
+        - name: RESTORE_USERNAME
+          value: "elastic"
+        - name: RESTORE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-restore-secret
+              key: password
+        - name: RESTORE_VERIFY_CERTS
+          value: "false"
+        
+        # Repository Configuration
+        - name: ES_REPOSITORY_NAME
+          value: "s3_backup"
+        - name: ES_SNAPSHOT_NAME
+          value: "snapshot_20250730_120000"  # Specify the snapshot to restore
+        - name: ES_INDICES
+          value: "*"  # Restore all indices from the snapshot
+        - name: ES_WAIT_FOR_COMPLETION
+          value: "true"
+        
+        # S3 Configuration
+        - name: S3_BUCKET_NAME
+          value: "your-elasticsearch-snapshots"
+        - name: S3_BASE_PATH
+          value: "elasticsearch-snapshots"
+        - name: S3_REGION
+          value: "us-east-1"
+        - name: S3_ENDPOINT
+          value: "https://s3.amazonaws.com"
+        - name: S3_PROTOCOL
+          value: "https"
+        - name: S3_PATH_STYLE_ACCESS
+          value: "false"
+        
+        # AWS Credentials
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-secret
+              key: access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-secret
+              key: secret-access-key
+        - name: AWS_REGION
+          value: "us-east-1"
+        
+        # Restore-specific Configuration
+        - name: RESTORE_RENAME_PATTERN
+          value: ""  # Optional: pattern to rename indices during restore
+        - name: RESTORE_RENAME_REPLACEMENT
+          value: ""  # Optional: replacement for renamed indices
+        - name: RESTORE_IGNORE_UNAVAILABLE
+          value: "true"
+        - name: RESTORE_PARTIAL
+          value: "false"
+        
+        # Logging Configuration
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: LOG_FORMAT
+          value: "json"
+        
+        # Operation Mode (set to restore)
+        - name: OPERATION_MODE
+          value: "restore"

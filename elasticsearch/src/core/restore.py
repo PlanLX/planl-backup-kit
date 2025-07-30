@@ -5,8 +5,8 @@ from typing import Any
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError, RequestError
 
-from models.config import SnapshotConfig
-from utils.logging import get_logger
+from src.models.config import SnapshotConfig
+from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -67,18 +67,21 @@ class ElasticsearchRestore:
                 # Add optional settings if they are provided
                 if self.config.endpoint:
                     settings["endpoint"] = self.config.endpoint
-
                 if self.config.protocol:
                     settings["protocol"] = self.config.protocol
                 if self.config.path_style_access is not None:
                     settings["path_style_access"] = self.config.path_style_access
                 if hasattr(self.config, "aws_region") and self.config.aws_region:
                     settings["region"] = self.config.aws_region
+                if hasattr(self.config, "compress"):
+                    settings["compress"] = self.config.compress
 
                 repository_body = {
                     "type": "s3",
                     "settings": settings,
                 }
+
+                logger.info(f"Creating S3 repository with settings: {settings}")
             else:
                 # 默认使用文件系统存储库
                 repository_body = {
@@ -106,6 +109,23 @@ class ElasticsearchRestore:
                 raise
         except Exception as e:
             logger.error(f"Unexpected error creating repository: {e}")
+            raise
+
+    async def snapshot_exists(self, snapshot_name: str) -> bool:
+        """Check if a snapshot exists in the repository."""
+        if not self.es_client:
+            raise RuntimeError("Not connected to Elasticsearch")
+
+        try:
+            self.es_client.snapshot.get(
+                repository=self.config.repository_name,
+                snapshot=snapshot_name,
+            )
+            return True
+        except NotFoundError:
+            return False
+        except Exception as e:
+            logger.error(f"Failed to check snapshot existence: {e}")
             raise
 
     async def close_indices(self, indices: list[str]) -> None:
@@ -155,22 +175,32 @@ class ElasticsearchRestore:
             raise ValueError("Snapshot name is required for restore operation")
 
         try:
+            # Build restore body with restore-specific settings
             restore_body = {
                 "indices": ",".join(self.config.indices_list),
-                "ignore_unavailable": True,
+                "ignore_unavailable": getattr(self.config, 'ignore_unavailable', True),
                 "include_global_state": False,
                 "include_aliases": True,
+                "partial": getattr(self.config, 'partial', False),
             }
+
+            # Add rename pattern if provided
+            if hasattr(self.config, 'rename_pattern') and self.config.rename_pattern:
+                restore_body["rename_pattern"] = self.config.rename_pattern
+                if hasattr(self.config, 'rename_replacement') and self.config.rename_replacement:
+                    restore_body["rename_replacement"] = self.config.rename_replacement
 
             logger.info(
                 f"Restoring snapshot '{snapshot_name}' for indices: {self.config.indices_list}"
             )
+            logger.debug(f"Restore body: {restore_body}")
 
-            # Close indices before restore
-            await self.close_indices(self.config.indices_list)
+            # Close indices before restore (only if not using rename pattern)
+            if not hasattr(self.config, 'rename_pattern') or not self.config.rename_pattern:
+                await self.close_indices(self.config.indices_list)
 
             # Perform restore
-            self.es_client.snapshot.restore(
+            response = self.es_client.snapshot.restore(
                 repository=self.config.repository_name,
                 snapshot=snapshot_name,
                 body=restore_body,
@@ -186,19 +216,22 @@ class ElasticsearchRestore:
                 logger.info(
                     f"Restore from snapshot '{snapshot_name}' started successfully"
                 )
+                logger.debug(f"Restore response: {response}")
 
-            # Open indices after restore
-            await self.open_indices(self.config.indices_list)
+            # Open indices after restore (only if not using rename pattern)
+            if not hasattr(self.config, 'rename_pattern') or not self.config.rename_pattern:
+                await self.open_indices(self.config.indices_list)
 
         except Exception as e:
             logger.error(f"Failed to restore snapshot: {e}")
-            # Try to reopen indices even if restore failed
-            try:
-                await self.open_indices(self.config.indices_list)
-            except Exception as reopen_error:
-                logger.error(
-                    f"Failed to reopen indices after restore failure: {reopen_error}"
-                )
+            # Try to reopen indices even if restore failed (only if not using rename pattern)
+            if not hasattr(self.config, 'rename_pattern') or not self.config.rename_pattern:
+                try:
+                    await self.open_indices(self.config.indices_list)
+                except Exception as reopen_error:
+                    logger.error(
+                        f"Failed to reopen indices after restore failure: {reopen_error}"
+                    )
             raise
 
     async def get_snapshot_status(self, snapshot_name: str) -> dict[str, Any]:
@@ -248,6 +281,11 @@ class ElasticsearchRestore:
         try:
             await self.connect()
             await self.create_repository()
+            
+            # Check if snapshot exists
+            if not await self.snapshot_exists(snapshot_name):
+                raise ValueError(f"Snapshot '{snapshot_name}' not found in repository '{self.config.repository_name}'")
+            
             await self.restore_snapshot(snapshot_name)
 
         finally:
