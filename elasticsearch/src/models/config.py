@@ -1,6 +1,5 @@
 """Configuration models for Elasticsearch snapshot and restore operations."""
 
-
 from enum import Enum
 from typing import Optional
 from pydantic import Field, validator
@@ -9,6 +8,7 @@ from pydantic_settings import BaseSettings
 
 class OperationMode(str, Enum):
     """Operation mode enumeration."""
+
     SNAPSHOT = "snapshot"
     RESTORE = "restore"
     BOTH = "both"
@@ -46,7 +46,7 @@ class SnapshotConfig(BaseSettings):
     operation_mode: OperationMode = Field(
         default=OperationMode.SNAPSHOT,
         description="Operation mode",
-        alias="OPERATION_MODE"
+        alias="OPERATION_MODE",
     )
 
     # Snapshot-specific configuration
@@ -79,6 +79,9 @@ class SnapshotConfig(BaseSettings):
     )
     wait_for_completion: bool = Field(
         True, description="Wait for snapshot completion", alias="ES_WAIT_FOR_COMPLETION"
+    )
+    timeout: int = Field(
+        300, description="Operation timeout in seconds", alias="SNAPSHOT_TIMEOUT"
     )
 
     # S3 configuration
@@ -149,6 +152,18 @@ class SnapshotConfig(BaseSettings):
         default=30,
         description="Snapshot retention days",
         alias="SNAPSHOT_RETENTION_DAYS",
+    )
+
+    # Backward compatibility fields
+    retention_days: int = Field(
+        default=30,
+        description="Retention days (backward compatibility)",
+        alias="RETENTION_DAYS",
+    )
+    retention_count: int = Field(
+        default=10,
+        description="Retention count (backward compatibility)",
+        alias="RETENTION_COUNT",
     )
 
     # Logging configuration
@@ -243,7 +258,7 @@ class RestoreConfig(BaseSettings):
     operation_mode: OperationMode = Field(
         default=OperationMode.RESTORE,
         description="Operation mode",
-        alias="OPERATION_MODE"
+        alias="OPERATION_MODE",
     )
 
     # Restore-specific configuration
@@ -366,8 +381,3 @@ class RestoreConfig(BaseSettings):
     class Config:
         env_prefix = ""
         case_sensitive = False
-
-
-# Backward compatibility - use SnapshotConfig as the main config for now
-# This can be enhanced later to support both operations based on operation_mode
-SnapshotConfig = SnapshotConfig
