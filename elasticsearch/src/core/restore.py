@@ -5,7 +5,7 @@ from typing import Any
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError, RequestError
 
-from src.models.config import SnapshotConfig
+from src.models.config import RestoreConfig
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 class ElasticsearchRestore:
     """Handles Elasticsearch restore operations from S3."""
 
-    def __init__(self, config: SnapshotConfig):
+    def __init__(self, config: RestoreConfig):
         """Initialize restore handler with configuration."""
         self.config = config
         self.es_client: Elasticsearch | None = None
@@ -168,11 +168,11 @@ class ElasticsearchRestore:
 
     async def restore_snapshot(self, snapshot_name: str) -> None:
         """Restore snapshot to destination cluster."""
-        if not self.es_client:
-            raise RuntimeError("Not connected to Elasticsearch")
-
         if not snapshot_name:
             raise ValueError("Snapshot name is required for restore operation")
+            
+        if not self.es_client:
+            raise RuntimeError("Not connected to Elasticsearch")
 
         try:
             # Build restore body with restore-specific settings

@@ -297,6 +297,9 @@ class RestoreConfig(BaseSettings):
     wait_for_completion: bool = Field(
         True, description="Wait for restore completion", alias="ES_WAIT_FOR_COMPLETION"
     )
+    timeout: int = Field(
+        300, description="Operation timeout in seconds", alias="SNAPSHOT_TIMEOUT"
+    )
 
     # S3 configuration (same as snapshot)
     bucket_name: str = Field(..., description="S3 bucket name", alias="S3_BUCKET_NAME")

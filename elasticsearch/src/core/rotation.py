@@ -149,11 +149,15 @@ class SnapshotRotation:
         try:
             # 支持多种快照命名格式
             if snapshot_name.startswith("snapshot_"):
-                # 格式: snapshot_2025_07_29t13_04_24
-                date_str = snapshot_name.replace("snapshot_", "").replace("t", "T")
-                # 修复下划线格式
-                date_str = date_str.replace("_", "-")
-                return datetime.fromisoformat(date_str)
+                # 格式: snapshot_20250729_130424 (注意：没有下划线分隔的日期部分)
+                date_str = snapshot_name.replace("snapshot_", "")
+                if "_" in date_str:
+                    date_part, time_part = date_str.split("_", 1)
+                    # 假设格式为 YYYYMMDD_HHMMSS
+                    if len(date_part) == 8 and len(time_part) == 6:
+                        return datetime.strptime(
+                            f"{date_part}_{time_part}", "%Y%m%d_%H%M%S"
+                        )
             elif snapshot_name.startswith("snapshot"):
                 # 格式: snapshot20250729_131212
                 date_str = snapshot_name.replace("snapshot", "")
@@ -185,7 +189,7 @@ class SnapshotRotation:
             snapshots = await self.list_snapshots()
             if not snapshots:
                 logger.info("No snapshots found for rotation")
-                return {"deleted": [], "kept": [], "total_deleted": 0}
+                return {"deleted": [], "kept": [], "total_deleted": 0, "total_kept": 0}
 
             # 过滤快照
             valid_snapshots = []
